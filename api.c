@@ -92,6 +92,10 @@ static char *buffer = NULL;
 static time_t startup = 0;
 static int bye = 0;
 
+extern bool global_paused;
+volatile float throttle = 100.0f;
+void api_set_throttle(float val);
+
 extern char *opt_api_allow;
 extern int opt_api_listen; /* port */
 extern int opt_api_remote;
@@ -203,6 +207,53 @@ static char *remote_seturl(char *params)
 	return buffer;
 }
 
+
+/**
+* Change throttle % (see --throttle parameter)
+* setthrottle|100|
+*/
+static char *remote_setthrottle(char *params)
+{
+	bool ret;
+	*buffer = '\0';
+
+	float val = strtof(params, NULL);
+	api_set_throttle(val);
+
+	sprintf(buffer, "%s|", "ok");
+	return buffer;
+}
+
+/**
+* Change global pause state
+* setpaused|0| or setpaused|1|
+*/
+static char *remote_setpaused(char *params)
+{
+	bool ret = true;
+	*buffer = '\0';
+
+	if (*params == '1')
+	{
+		applog(LOG_INFO, "Setting global pause state to true");
+		global_paused = true;
+		restart_threads();
+	}
+	else if (*params == '0')
+	{
+		applog(LOG_INFO, "Setting global pause state to false");
+		global_paused = false;
+		restart_threads();
+	}
+	else
+	{
+		ret = false;
+	}
+
+	sprintf(buffer, "%s|", ret ? "ok" : "fail");
+	return buffer;
+}
+
 /**
  * Ask the miner to quit
  */
@@ -225,6 +276,8 @@ struct CMDS {
 	{ "threads", getthreads },
 	/* remote functions */
 	{ "seturl", remote_seturl },
+	{ "setthrottle", remote_setthrottle, true },
+	{ "setpaused", remote_setpaused, true },
 	{ "quit",    remote_quit },
 	/* keep it the last */
 	{ "help",    gethelp },
@@ -725,4 +778,19 @@ void *api_thread(void *userdata)
 	}
 
 	return NULL;
+}
+
+void api_set_throttle(float val)
+{
+	applog(LOG_INFO, "Setting throttle to %g %%", val);
+
+	if (val > 100.0f)
+		val = 100.0f;
+	if (val < 0.0f)
+		val = 0.0f;
+
+	// Calculate exp scale between 0-1
+	throttle = val;
+
+	reset_threads();
 }

@@ -215,7 +215,14 @@ int scanhash_m7m_hash( int thr_id, struct work* work,
     mpf_set_str(mpt2, "0.8e3b1a9b359805c2e54c6415037f2e336893b6457f7754f6b4ae045eb6c5f2bedb26a114030846be7", 16);
     mpf_set_str(magifpi0, "0.b7bfc6837e20bdb22653f1fc419f6bc33ca80eb65b7b0246f7f3b65689560aea1a2f2fd95f254d68c", 16);
 
+	bool throttle_cpu = (opt_n_threads == 1) && (throttle < 100);
+
     do {
+		if( throttle_cpu )
+			if (!(n % 50))
+				usleep((long)((100.0f-throttle)*90.0f));
+
+
         data[19] = ++n;
         memset(bhash, 0, 7 * 64);
 

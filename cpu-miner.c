@@ -74,6 +74,9 @@
 
 algo_gate_t algo_gate;
 
+extern void api_set_throttle(float val);
+extern volatile float throttle;
+
 bool opt_debug = false;
 bool opt_debug_diff = false;
 bool opt_protocol = false;
@@ -90,6 +93,9 @@ bool have_stratum = false;
 bool allow_mininginfo = true;
 bool use_syslog = false;
 bool use_colors = true;
+bool restart_all_threads = false;
+bool shutdown_miner = false;
+bool global_paused = false;
 static bool opt_background = false;
 bool opt_quiet = false;
 bool opt_randomize = false;
@@ -165,7 +171,7 @@ static char const short_options[] =
 #ifdef HAVE_SYSLOG_H
 	"S"
 #endif
-	"a:b:Bc:CDf:hm:n:p:Px:qr:R:s:t:T:o:u:O:V";
+	"a:b:Bc:CDf:hm:n:p:Px:qr:R:s:t:T:o:u:O:VX:";
 
 static struct work g_work = {{ 0 }};
 //static struct work tmp_work;
@@ -1726,6 +1732,13 @@ static void *miner_thread( void *userdata )
        if ( firstwork_time == 0 )
           firstwork_time = time(NULL);
        work_restart[thr_id].restart = 0;
+
+	   while (global_paused)
+	   {
+		   // Spin tyres
+		   sleep(1);
+	   }
+
        hashes_done = 0;
        gettimeofday( (struct timeval *) &tv_start, NULL );
 
@@ -1740,9 +1753,9 @@ static void *miner_thread( void *userdata )
        {
           pthread_mutex_lock(&stats_lock);
           thr_hashcount[thr_id] = hashes_done;
-	  thr_hashrates[thr_id] =
-		hashes_done / (diff.tv_sec + diff.tv_usec * 1e-6);
-	  pthread_mutex_unlock(&stats_lock);
+			thr_hashrates[thr_id] =
+				hashes_done / (diff.tv_sec + diff.tv_usec * 1e-6);
+			pthread_mutex_unlock(&stats_lock);
        }
        // if nonce found, submit work 
        if ( nonce_found && !opt_benchmark )
@@ -1815,6 +1828,9 @@ static void *miner_thread( void *userdata )
 #endif
           }
        }
+
+	   if (restart_all_threads)
+		   break;
    }  // miner_thread loop
 
 out:
@@ -1825,6 +1841,14 @@ out:
 void restart_threads(void)
 {
 	for ( int i = 0; i < opt_n_threads; i++)
+		work_restart[i].restart = 1;
+}
+
+void reset_threads(void)
+{
+	restart_all_threads = true;
+
+	for (int i = 0; i < opt_n_threads; i++)
 		work_restart[i].restart = 1;
 }
 
@@ -2646,6 +2670,9 @@ void parse_arg(int key, char *arg )
 	case 1024:
 		opt_randomize = true;
 		break;
+	case 'X':	// Throttle
+		api_set_throttle(atof(arg));
+		break;
 	case 'V':
 		show_version_and_exit();
 	case 'h':
@@ -2765,13 +2792,9 @@ static int thread_create(struct thr_info *thr, void* func)
 
 static void show_credits()
 {
-	printf("\n         **********  "PACKAGE_NAME" "PACKAGE_VERSION"  *********** \n");
-        printf("     A CPU miner with multi algo support and optimized for CPUs\n");
-        printf("     with AES_NI and AVX extensions.\n");
-	printf("     BTC donation address: 12tdvfF7KmAsihBXQXynT6E6th2c2pByTT\n");
-        printf("     Forked from TPruvot's cpuminer-multi with credits\n");
-        printf("     to Lucas Jones, elmad, palmd, djm34, pooler, ig0tik3d,\n");
-        printf("     Wolf0, Jeff Garzik and Optiminer.\n\n");
+	printf("******************************************************************\n");
+	printf("*** " PACKAGE_NAME " " PACKAGE_VERSION " for Esker https://esker.tech \n");
+	printf("******************************************************************\n");
 }
 
 bool check_cpu_capability ()
@@ -2909,58 +2932,58 @@ int main(int argc, char *argv[])
 
 	parse_cmdline(argc, argv);
 
-        if (!opt_n_threads)
-                opt_n_threads = num_cpus;
+	if (!opt_n_threads)
+		opt_n_threads = num_cpus;
 
-        if ( opt_algo == ALGO_NULL )
-        {
-            fprintf(stderr, "%s: no algo supplied\n", argv[0]);
-            show_usage_and_exit(1);
-        }
-	if ( !opt_benchmark )
-        {
-            if ( !short_url )
-            {
-               fprintf(stderr, "%s: no URL supplied\n", argv[0]);
-               show_usage_and_exit(1);
-            }
-/*
-            if ( !rpc_url )
-            {
-		// try default config file in binary folder
-		char defconfig[MAX_PATH] = { 0 };
-		get_defconfig_path(defconfig, MAX_PATH, argv[0]);
-		if (strlen(defconfig))
-                {
-			if (opt_debug)
-				applog(LOG_DEBUG, "Using config %s", defconfig);
-			parse_arg('c', defconfig);
-			parse_cmdline(argc, argv);
-		}
-            }
-            if ( !rpc_url )
-            {
-		fprintf(stderr, "%s: no URL supplied\n", argv[0]);
+	if (opt_algo == ALGO_NULL)
+	{
+		fprintf(stderr, "%s: no algo supplied\n", argv[0]);
 		show_usage_and_exit(1);
-            }
-*/
+	}
+	if (!opt_benchmark)
+	{
+		if (!short_url)
+		{
+			fprintf(stderr, "%s: no URL supplied\n", argv[0]);
+			show_usage_and_exit(1);
+		}
+		/*
+					if ( !rpc_url )
+					{
+				// try default config file in binary folder
+				char defconfig[MAX_PATH] = { 0 };
+				get_defconfig_path(defconfig, MAX_PATH, argv[0]);
+				if (strlen(defconfig))
+						{
+					if (opt_debug)
+						applog(LOG_DEBUG, "Using config %s", defconfig);
+					parse_arg('c', defconfig);
+					parse_cmdline(argc, argv);
+				}
+					}
+					if ( !rpc_url )
+					{
+				fprintf(stderr, "%s: no URL supplied\n", argv[0]);
+				show_usage_and_exit(1);
+					}
+		*/
 	}
 
 	if (!rpc_userpass)
-        {
-		rpc_userpass = (char*) malloc(strlen(rpc_user) + strlen(rpc_pass) + 2);
-                if (rpc_userpass)
-	           sprintf(rpc_userpass, "%s:%s", rpc_user, rpc_pass);
-                else
-                   return 1;
+	{
+		rpc_userpass = (char*)malloc(strlen(rpc_user) + strlen(rpc_pass) + 2);
+		if (rpc_userpass)
+			sprintf(rpc_userpass, "%s:%s", rpc_user, rpc_pass);
+		else
+			return 1;
 	}
 
-        // All options must be set before starting the gate
-        if ( !register_algo_gate( opt_algo, &algo_gate ) )
-           exit(1);
+	// All options must be set before starting the gate
+	if (!register_algo_gate(opt_algo, &algo_gate))
+		exit(1);
 
-        if ( !check_cpu_capability() )
-           exit(1);
+	if (!check_cpu_capability())
+		exit(1);
 
 	pthread_mutex_init(&stats_lock, NULL);
 	pthread_mutex_init(&g_work_lock, NULL);
@@ -2970,17 +2993,17 @@ int main(int argc, char *argv[])
 	pthread_mutex_init(&stratum.work_lock, NULL);
 
 	flags = !opt_benchmark && strncmp(rpc_url, "https:", 6)
-	        ? (CURL_GLOBAL_ALL & ~CURL_GLOBAL_SSL)
-	        : CURL_GLOBAL_ALL;
+		? (CURL_GLOBAL_ALL & ~CURL_GLOBAL_SSL)
+		: CURL_GLOBAL_ALL;
 	if (curl_global_init(flags))
-        {
+	{
 		applog(LOG_ERR, "CURL initialization failed");
 		return 1;
 	}
 
 #ifndef WIN32
 	if (opt_background)
-        {
+	{
 		i = fork();
 		if (i < 0) exit(1);
 		if (i > 0) exit(0);
@@ -2998,19 +3021,20 @@ int main(int argc, char *argv[])
 #else
 	SetConsoleCtrlHandler((PHANDLER_ROUTINE)ConsoleHandler, TRUE);
 	if (opt_background)
-        {
+	{
 		HWND hcon = GetConsoleWindow();
 		if (hcon) {
 			// this method also hide parent command line window
 			ShowWindow(hcon, SW_HIDE);
-		} else {
+		}
+		else {
 			HANDLE h = GetStdHandle(STD_OUTPUT_HANDLE);
 			CloseHandle(h);
 			FreeConsole();
 		}
 	}
 	if (opt_priority > 0)
-        {
+	{
 		DWORD prio = NORMAL_PRIORITY_CLASS;
 		switch (opt_priority) {
 		case 1:
@@ -3029,17 +3053,17 @@ int main(int argc, char *argv[])
 	}
 #endif
 	if (opt_affinity != -1)
-        {
+	{
 		if (!opt_quiet)
 			applog(LOG_DEBUG, "Binding process to cpu mask %x", opt_affinity);
 		affine_to_cpu_mask(-1, (unsigned long)opt_affinity);
 	}
 
 
-//#ifdef HAVE_SYSLOG_H
-//	if (use_syslog)
-//		openlog("cpuminer", LOG_PID, LOG_USER);
-//#endif
+	//#ifdef HAVE_SYSLOG_H
+	//	if (use_syslog)
+	//		openlog("cpuminer", LOG_PID, LOG_USER);
+	//#endif
 
 	work_restart = (struct work_restart*) calloc(opt_n_threads, sizeof(*work_restart));
 	if (!work_restart)
@@ -3047,12 +3071,12 @@ int main(int argc, char *argv[])
 	thr_info = (struct thr_info*) calloc(opt_n_threads + 4, sizeof(*thr));
 	if (!thr_info)
 		return 1;
-	thr_hashrates = (double *) calloc(opt_n_threads, sizeof(double));
+	thr_hashrates = (double *)calloc(opt_n_threads, sizeof(double));
 	if (!thr_hashrates)
 		return 1;
-        thr_hashcount = (double *) calloc(opt_n_threads, sizeof(double));
-        if (!thr_hashcount)
-                return 1;
+	thr_hashcount = (double *)calloc(opt_n_threads, sizeof(double));
+	if (!thr_hashcount)
+		return 1;
 
 	/* init workio thread info */
 	work_thr_id = opt_n_threads;
@@ -3062,20 +3086,20 @@ int main(int argc, char *argv[])
 	if (!thr->q)
 		return 1;
 
-       if ( rpc_pass && rpc_user )
-          opt_stratum_stats = ( strstr( rpc_pass, "stats" ) != NULL )
-                           || ( strcmp( rpc_user, "benchmark" ) == 0 );
+	if (rpc_pass && rpc_user)
+		opt_stratum_stats = (strstr(rpc_pass, "stats") != NULL)
+		|| (strcmp(rpc_user, "benchmark") == 0);
 
 	/* start work I/O thread */
 	if (thread_create(thr, workio_thread))
-        {
+	{
 		applog(LOG_ERR, "work thread create failed");
 		return 1;
 	}
 
 	/* ESET-NOD32 Detects these 2 thread_create... */
 	if (want_longpoll && !have_stratum)
-        {
+	{
 		/* init longpoll thread info */
 		longpoll_thr_id = opt_n_threads + 1;
 		thr = &thr_info[longpoll_thr_id];
@@ -3091,7 +3115,7 @@ int main(int argc, char *argv[])
 		}
 	}
 	if (want_stratum)
-        {
+	{
 		/* init stratum thread info */
 		stratum_thr_id = opt_n_threads + 2;
 		thr = &thr_info[stratum_thr_id];
@@ -3102,7 +3126,7 @@ int main(int argc, char *argv[])
 		/* start stratum thread */
 		err = thread_create(thr, stratum_thread);
 		if (err)
-                {
+		{
 			applog(LOG_ERR, "stratum thread create failed");
 			return 1;
 		}
@@ -3111,7 +3135,7 @@ int main(int argc, char *argv[])
 	}
 
 	if (opt_api_listen)
-        {
+	{
 		/* api thread */
 		api_thr_id = opt_n_threads + 3;
 		thr = &thr_info[api_thr_id];
@@ -3127,24 +3151,42 @@ int main(int argc, char *argv[])
 	}
 
 	/* start mining threads */
-	for (i = 0; i < opt_n_threads; i++)
-        {
-		thr = &thr_info[i];
-		thr->id = i;
-		thr->q = tq_new();
-		if (!thr->q)
-			return 1;
-		err = thread_create(thr, miner_thread);
-		if (err) {
-			applog(LOG_ERR, "thread %d create failed", i);
-			return 1;
+	while (!shutdown_miner)
+	{
+		restart_all_threads = false;
+		int num_threads = (int)((float)opt_n_threads * (throttle/100.0f));
+
+		if (opt_n_threads == 1 || num_threads < 1)
+			num_threads = 1;
+
+		for (i = 0; i < num_threads; i++)
+		{
+			thr = &thr_info[i];
+			thr->id = i;
+			thr->q = tq_new();
+
+			if (!thr->q)
+				return 1;
+
+			err = thread_create(thr, miner_thread);
+
+			if (err)
+			{
+				applog(LOG_ERR, "thread %d create failed", i);
+				return 1;
+			}
+		}
+
+		applog(LOG_INFO, "%d miner threads started, "
+			"using '%s' algorithm.",
+			num_threads,
+			algo_names[opt_algo]);
+
+		while (!shutdown_miner && !restart_all_threads)
+		{
+			sleep(2);
 		}
 	}
-
-	applog(LOG_INFO, "%d miner threads started, "
-		"using '%s' algorithm.",
-		opt_n_threads,
-		algo_names[opt_algo]);
 
 	/* main loop - simply wait for workio thread to exit */
 	pthread_join(thr_info[work_thr_id].pth, NULL);

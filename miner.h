@@ -303,6 +303,7 @@ struct thr_api {
 
 void   applog(int prio, const char *fmt, ...);
 void   restart_threads(void);
+void   reset_threads(void);
 extern json_t *json_rpc_call( CURL *curl, const char *url, const char *userpass,
                 	const char *rpc_req, int *curl_err, int flags );
 void   bin2hex( char *s, const unsigned char *p, size_t len );
@@ -417,7 +418,7 @@ extern size_t rpc2_bloblen;
 extern uint32_t rpc2_target;
 extern char *rpc2_job_id;
 extern char *rpc_user;
-
+extern volatile float throttle;
 
 json_t *json_rpc2_call(CURL *curl, const char *url, const char *userpass, const char *rpc_req, int *curl_err, int flags);
 bool rpc2_login(CURL *curl);
@@ -830,6 +831,7 @@ static struct option const options[] = {
         { "url", 1, NULL, 'o' },
         { "user", 1, NULL, 'u' },
         { "userpass", 1, NULL, 'O' },
+		{ "throttle", 1, NULL, 'X' },
         { "version", 0, NULL, 'V' },
         { 0, 0, 0, 0 }
 };
