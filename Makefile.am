@@ -11,11 +11,11 @@ SUBDIRS		= compat
 
 ALL_INCLUDES	= @PTHREAD_FLAGS@ -fno-strict-aliasing $(JANSSON_INCLUDES) -I.
 
-bin_PROGRAMS	= cpuminer
+bin_PROGRAMS	= cpuminer-esker
 
 dist_man_MANS	= cpuminer.1
 
-cpuminer_SOURCES = \
+cpuminer_esker_SOURCES = \
   cpu-miner.c \
   util.c \
   uint256.cpp \
@@ -144,31 +144,31 @@ cpuminer_SOURCES = \
 disable_flags =
 
 if USE_ASM
-   cpuminer_SOURCES += asm/neoscrypt_asm.S
+   cpuminer_esker_SOURCES += asm/neoscrypt_asm.S
 if ARCH_x86
-   cpuminer_SOURCES += asm/sha2-x86.S asm/scrypt-x86.S asm/aesb-x86.S
+   cpuminer_esker_SOURCES += asm/sha2-x86.S asm/scrypt-x86.S asm/aesb-x86.S
 endif
 if ARCH_x86_64
-   cpuminer_SOURCES += asm/sha2-x64.S asm/scrypt-x64.S asm/aesb-x64.S
+   cpuminer_esker_SOURCES += asm/sha2-x64.S asm/scrypt-x64.S asm/aesb-x64.S
 endif
 if ARCH_ARM
-   cpuminer_SOURCES += asm/sha2-arm.S asm/scrypt-arm.S
+   cpuminer_esker_SOURCES += asm/sha2-arm.S asm/scrypt-arm.S
 endif
 else
    disable_flags += -DNOASM
 endif
 
 if HAVE_WINDOWS
-   cpuminer_SOURCES += compat/winansi.c
+   cpuminer_esker_SOURCES += compat/winansi.c
 endif
 
-cpuminer_LDFLAGS	= @LDFLAGS@
-cpuminer_LDADD	= @LIBCURL@ @JANSSON_LIBS@ @PTHREAD_LIBS@ @WS2_LIBS@ -lssl -lcrypto -lgmp
-cpuminer_CPPFLAGS = @LIBCURL_CPPFLAGS@ $(ALL_INCLUDES)
-cpuminer_CFLAGS   = -Wno-pointer-sign -Wno-pointer-to-int-cast $(disable_flags)
+cpuminer_esker_LDFLAGS	= @LDFLAGS@
+cpuminer_esker_LDADD	= @LIBCURL@ @JANSSON_LIBS@ @PTHREAD_LIBS@ @WS2_LIBS@ -lssl -lcrypto -lgmp
+cpuminer_esker_CPPFLAGS = @LIBCURL_CPPFLAGS@ $(ALL_INCLUDES)
+cpuminer_esker_CFLAGS   = -Wno-pointer-sign -Wno-pointer-to-int-cast $(disable_flags)
 
 if HAVE_WINDOWS
-cpuminer_CFLAGS += -Wl,--stack,10485760
+cpuminer_esker_CFLAGS += -Wl,--stack,10485760
 endif
 
 if HAVE_WINDOWS
